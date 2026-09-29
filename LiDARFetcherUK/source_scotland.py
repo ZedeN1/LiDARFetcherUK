@@ -24,6 +24,69 @@ RES_RE = re.compile(r"_(\d+(?:cm|m|ppm))_", re.IGNORECASE)
 # Collection metadata fields kept in the cache.
 KEEP = ("title", "temporalExtent", "metadataDate", "datasetReferenceDate")
 
+# Collections as of 2026-09-29, so the Processing dataset list is complete before
+# the first metadata fetch; newer ones are added from the cache.
+KNOWN_COLLECTIONS = {
+    "scotland-gov/lidar/national-lidar-programme/dtm": "Scottish National LiDAR Programme DTM",
+    "scotland-gov/lidar/national-lidar-programme/dsm": "Scottish National LiDAR Programme DSM",
+    "scotland-gov/lidar/national-lidar-programme/laz": "Scottish National LiDAR Programme LAZ",
+    "scotland-gov/lidar/phase-1/dtm": "LiDAR for Scotland Phase I DTM",
+    "scotland-gov/lidar/phase-1/dsm": "LiDAR for Scotland Phase I DSM",
+    "scotland-gov/lidar/phase-1/laz": "LiDAR for Scotland Phase I LAS (LAZ)",
+    "scotland-gov/lidar/phase-2/dtm": "LiDAR for Scotland Phase II DTM",
+    "scotland-gov/lidar/phase-2/dsm": "LiDAR for Scotland Phase II DSM",
+    "scotland-gov/lidar/phase-2/laz": "LiDAR for Scotland Phase II LAS (LAZ)",
+    "scotland-gov/lidar/phase-3/dtm": "LiDAR for Scotland Phase III DTM",
+    "scotland-gov/lidar/phase-3/dsm": "LiDAR for Scotland Phase III DSM",
+    "scotland-gov/lidar/phase-3/laz": "LiDAR for Scotland Phase III LAS (LAZ)",
+    "scotland-gov/lidar/phase-4/dtm": "LiDAR for Scotland Phase IV DTM",
+    "scotland-gov/lidar/phase-4/dsm": "LiDAR for Scotland Phase IV DSM",
+    "scotland-gov/lidar/phase-4/laz": "LiDAR for Scotland Phase IV LAS (LAZ)",
+    "scotland-gov/lidar/phase-5/dtm": "LiDAR for Scotland Phase V DTM",
+    "scotland-gov/lidar/phase-5/dsm": "LiDAR for Scotland Phase V DSM",
+    "scotland-gov/lidar/phase-5/laz": "LiDAR for Scotland Phase V LAS (LAZ)",
+    "scotland-gov/lidar/phase-6/dtm": "LiDAR for Scotland Phase VI DTM",
+    "scotland-gov/lidar/phase-6/dsm": "LiDAR for Scotland Phase VI DSM",
+    "scotland-gov/lidar/phase-6/laz": "LiDAR for Scotland Phase VI LAS (LAZ)",
+    "scotland-gov/lidar/outerheb-2019/dtm/50cm": "LiDAR for Outer Hebrides 2019 - 50cm DTM",
+    "scotland-gov/lidar/outerheb-2019/dsm/50cm": "LiDAR for Outer Hebrides 2019 - 50cm DSM",
+    "scotland-gov/lidar/outerheb-2019/dtm/25cm": "LiDAR for Outer Hebrides 2019 - 25cm DTM",
+    "scotland-gov/lidar/outerheb-2019/dsm/25cm": "LiDAR for Outer Hebrides 2019 - 25cm DSM",
+    "scotland-gov/lidar/outerheb-2019/laz/4ppm": "LiDAR for Outer Hebrides 2019 - 4 PPM LAS (LAZ)",
+    "scotland-gov/lidar/outerheb-2019/laz/16ppm": "LiDAR for Outer Hebrides 2019 - 16 PPM LAS (LAZ)",
+    "scotland-gov/lidar/orkney-islands-council-23/dtm": "LiDAR for Orkney Islands Council 2023 DTM",
+    "scotland-gov/lidar/orkney-islands-council-23/dsm": "LiDAR for Orkney Islands Council 2023 DSM",
+    "scotland-gov/lidar/orkney-islands-council-23/laz": "LiDAR for Orkney Islands Council 2023 LAZ",
+    "scotland-gov/lidar/hes/hes-2010/dtm": "HES LiDAR Data Stirling City and surrounding area (2010) DTM",
+    "scotland-gov/lidar/hes/hes-2010/dsm": "HES LiDAR Data Stirling City and surrounding area (2010) DSM",
+    "scotland-gov/lidar/hes/hes-2010/laz/dtm": "HES LiDAR Data Stirling City and surrounding area (2010) LAZ_DTM",
+    "scotland-gov/lidar/hes/hes-2010/laz/dsm": "HES LiDAR Data Stirling City and surrounding area (2010) LAZ_DSM",
+    "scotland-gov/lidar/hes/hes-2010s10/dtm": "LiDAR for Historic Environment Scotland Scottish Ten Project (2010) DTM",
+    "scotland-gov/lidar/hes/hes-2010s10/dsm": "LiDAR for Historic Environment Scotland Scottish Ten Project (2010) DSM",
+    "scotland-gov/lidar/hes/hes-2010s10/laz/dtm": "LiDAR for Historic Environment Scotland Scottish Ten Project (2010) LAZ_DTM",
+    "scotland-gov/lidar/hes/hes-2010s10/laz/dsm": "LiDAR for Historic Environment Scotland Scottish Ten Project (2010) LAZ_DSM",
+    "scotland-gov/lidar/hes/hes-2016/dtm": "LiDAR for Historic Environment Scotland Projects (2016) DTM",
+    "scotland-gov/lidar/hes/hes-2016/dsm": "LiDAR for Historic Environment Scotland Projects (2016) DSM",
+    "scotland-gov/lidar/hes/hes-2016-2017/dtm": "LiDAR for Historic Environment Scotland Projects (2016-2017 sub project 4) DTM",
+    "scotland-gov/lidar/hes/hes-2016-2017/dsm": "LiDAR for Historic Environment Scotland Projects (2016-2017 sub project 4) DSM",
+    "scotland-gov/lidar/hes/hes-2017/dtm": "LiDAR for Historic Environment Scotland Projects (2017) DTM",
+    "scotland-gov/lidar/hes/hes-2017/dsm": "LiDAR for Historic Environment Scotland Projects (2017) DSM",
+    "scotland-gov/lidar/hes/hes-2017sp3/dtm": "LiDAR for Historic Environment Scotland Project (2017 Sub Project 3) DTM",
+    "scotland-gov/lidar/hes/hes-2017sp3/dsm": "LiDAR for Historic Environment Scotland Project (2017 Sub Project 3) DSM",
+    "scotland-gov/lidar/hes/hes-2017sp3/laz": "LiDAR for Historic Environment Scotland Project (2017 Sub Project 3) LAZ",
+    "scotland-gov/lidar/hes/hes-luing/dtm": "LiDAR for Historic Environment Scotland Projects Isle of Luing DTM",
+    "scotland-gov/lidar/hes/hes-luing/dsm": "LiDAR for Historic Environment Scotland Projects Isle of Luing DSM",
+    "scotland-gov/lidar/hes/hes-luing/laz": "LiDAR for Historic Environment Scotland Projects Isle of Luing LAZ",
+}
+
+
+def choices(metadata=None):
+    """[(choice key, label)] for the Processing dataset list, one per collection."""
+    collections = dict(KNOWN_COLLECTIONS)
+    for name, meta in ((metadata or {}).get("collections") or {}).items():
+        collections.setdefault(name, meta.get("title") or name)
+    return [(f"{NAME}:{name}", f"{NAME} - {title}") for name, title in collections.items()]
+
 
 def fetch_metadata(feedback=None):
     """Every LiDAR collection with its title and dates."""
@@ -102,4 +165,5 @@ def _dataset(product, collections):
         slug = slug[:-len(res) - 1]
     ds = Dataset(NAME, "scotland_" + slug, meta.get("title") or collection, _years(meta), res, res)
     ds.collection = collection
+    ds.choice_key = f"{NAME}:{collection}"
     return ds

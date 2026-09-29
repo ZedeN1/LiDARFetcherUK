@@ -3,7 +3,7 @@ name=LiDAR Fetcher UK
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 description=Download LiDAR tiles for England, Scotland and Wales for a polygon or extent, with optional VRT, pyramids, merge and format conversion.
-version=0.02
+version=0.03
 author=Pavel Diptan
 email=pdiptan@gmail.com
 about=Pick an area (polygon layer or extent), choose one or more LiDAR datasets and download the tiles into a folder. Sources:
@@ -17,7 +17,7 @@ about=Pick an area (polygon layer or extent), choose one or more LiDAR datasets 
     - Merge the tiles into a single raster
     - Convert to GeoTIFF, ASCII Grid (.asc) or ESRI Float (.flt)
 
-    Also adds a Processing Toolbox algorithm (LiDAR Fetcher UK > Convert raster to FLT / ASC / GeoTIFF) that converts any raster, with batch support.
+    Also adds Processing Toolbox algorithms (LiDAR Fetcher UK): Download LiDAR tiles, for batch runs and models, and Convert raster to FLT / ASC / GeoTIFF for any raster.
 tracker=https://github.com/ZedeN1/LiDARFetcherUK/issues
 repository=https://github.com/ZedeN1/LiDARFetcherUK
 homepage=https://github.com/ZedeN1/LiDARFetcherUK

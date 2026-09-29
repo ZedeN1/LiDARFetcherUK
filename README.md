@@ -18,7 +18,7 @@ Works with QGIS 3.22+ and QGIS 4.
 
 1. **Raster → LiDAR Fetcher UK** (or the toolbar icon).
 2. Pick the area: a polygon layer (optionally selected features only) or an extent (canvas, layer or drawn).
-3. **Find available datasets** searches all three sources and lists every product, year and resolution covering the area, with its source, tile count and last modified date. Tick the datasets you want (tick *Show non-LiDAR products* for EA CASI and aerial photography).
+3. **Find available datasets** searches all three sources and lists every product, year and resolution covering the area, newest first, with its source, tile count and last modified date. Tick the datasets you want, or use the tick box in the top-left of the table to tick all of them (tick *Show non-LiDAR products* for EA CASI and aerial photography). Columns can be resized by dragging.
 4. Choose an output folder and options, then **Download**.
 
 Each dataset goes into its own folder, e.g. `lidar_composite_dtm_2022_1m/`:
@@ -52,7 +52,18 @@ A failing tile is retried twice (after 2 s and 5 s), then recorded as failed whi
 
 ## Processing Toolbox
 
-**LiDAR Fetcher UK → Convert raster to FLT / ASC / GeoTIFF** converts any raster, with an optional pyramids step. Use *Run as Batch Process* for many files. FLT headers are written from the raster's outer corner (no half-cell shift).
+Two algorithms under **LiDAR Fetcher UK**:
+
+- **Download LiDAR tiles**: the dialog's download without the dialog, for batch runs, models and scripts. Give a polygon layer (honours *Selected features only*) or an extent, pick datasets from the list of every product (EA, all Scottish collections, Welsh 2020-2023 and archive), choose *Latest year only* (per resolution) or *All years*, optionally filter resolutions (`1m`, `50cm, 1m`; leave empty to include point clouds), and set the same options as the dialog. Uses the same cache, `lidar_fetcher.json` resume and retries, so dialog and Processing runs can share an output folder. Loads the VRT / merged files when finished and reports the number of failed tiles.
+- **Convert raster to FLT / ASC / GeoTIFF**: converts any raster, with an optional pyramids step. Use *Run as Batch Process* for many files. FLT headers are written from the raster's outer corner (no half-cell shift).
+
+Example (Python console):
+
+```python
+processing.run("lidarfetcheruk:downloadlidar", {
+    "AREA": "my_polygons", "DATASETS": ["EA - LIDAR Composite DTM"], "YEARS": 0,
+    "RESOLUTIONS": "1m", "MERGE": True, "CONVERT": ["FLT"], "OUTPUT": "C:/LiDAR"})
+```
 
 ## Data sources
 
@@ -75,4 +86,7 @@ Notes:
 
 ### Dataset info cache
 
-Dataset names and last modified dates (not the tiles, which depend on the area) are kept in `<QGIS profile>\LiDARFetcherUK\catalogue_cache.json`, e.g. `%APPDATA%\QGIS\QGIS3\profiles\default\LiDARFetcherUK\`. Every **Find available datasets** refreshes it for all three sources. If a service does not answer within 5 seconds (data.gov.uk sometimes takes 10-15 s) the cached copy is used and the log says how old it is. The line under the results table shows when each source was last fetched.
+Dataset names and last modified dates (not the tiles, which depend on the area) are kept in `<QGIS profile>\LiDARFetcherUK\catalogue_cache.json`, e.g. `%APPDATA%\QGIS\QGIS3\profiles\default\LiDARFetcherUK\`, and shown under the results table with their age.
+ - **Find available datasets** uses the cache, so only the tile search goes online. A source's info is fetched when it has none cached, or once its cache is older than 30 days.
+ - **Refresh metadata** refetches it for all three sources now, and updates the dates in a table already shown (ticks are kept).
+ - If a service does not answer within 5 seconds (data.gov.uk sometimes takes 10-15 s), the cached copy is kept and the log says so.

@@ -31,6 +31,14 @@ ARCHIVE = "geonode:nrw_lidar_tile_catalogue_archive"
 LAYER_RECORDS = {NATIONAL: (6986, "2024-10-14"), ARCHIVE: (6988, "2024-10-02")}
 
 
+def choices(metadata=None):
+    """[(choice key, label)] for the Processing dataset list."""
+    return [(f"{NAME}:wales_lidar_dtm", f"{NAME} - Welsh Government LiDAR DTM 2020-2023"),
+            (f"{NAME}:wales_lidar_dsm", f"{NAME} - Welsh Government LiDAR DSM 2020-2023"),
+            (f"{NAME}:nrw_archive_dtm", f"{NAME} - NRW LiDAR archive DTM 1998-2015"),
+            (f"{NAME}:nrw_archive_dsm", f"{NAME} - NRW LiDAR archive DSM 1998-2015")]
+
+
 def fetch_metadata(feedback=None):
     """Last updated date of each tile catalogue layer."""
     dates = {}

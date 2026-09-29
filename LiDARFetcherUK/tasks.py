@@ -15,7 +15,8 @@ from .manifest import Manifest
 RASTER_PATTERNS = ("*.tif", "*.tiff", "*.asc")
 ZIP_SIGNATURE = b"PK\x03\x04"
 # Seconds to wait before each retry of a failed tile; the EA server
-# occasionally answers 404 for tiles that download fine moments later.
+# occasionally answers 404 ("Cannot GET") for tiles that download fine moments
+# later. Not rate limiting: it happens after a handful of requests too.
 RETRY_WAITS = (2, 5)
 
 
@@ -60,26 +61,43 @@ class SearchTask(_Task):
         self.datasets = catalogue.search(self.area, self.feedback, self.log)
 
 
-class DownloadTask(_Task):
+class RefreshTask(_Task):
+    def __init__(self, on_finished):
+        super().__init__("LiDAR Fetcher: refreshing dataset info", on_finished)
+
+    def work(self):
+        catalogue.refresh_metadata(self.feedback, self.log)
+
+
+class Downloader:
     """Download each dataset into its own folder, then run the chosen processing.
 
     Layout: <out>/<product>_<year>_<res>/tiles/ holds the extracted tiles, and
     the VRT, merged raster and converted tiles sit alongside it, with
     lidar_fetcher.json recording every tile and the processing (see manifest).
+
+    Plain class shared by the dialog's DownloadTask and the Processing
+    algorithm: feedback (a QgsFeedback) cancels it, log receives messages
+    (with simple HTML) and progress receives 0-100.
     """
 
-    def __init__(self, datasets, out_dir, options, on_finished):
-        super().__init__("LiDAR Fetcher: downloading tiles", on_finished)
+    def __init__(self, datasets, out_dir, options, feedback, log, progress):
         self.datasets = datasets
         self.out_dir = out_dir
         self.options = options
+        self.feedback = feedback
+        self.log = log
+        self.setProgress = progress
         self.outputs = []  # (dataset folder name, [paths to add to the map])
         self.total = sum(len(d.tiles) for d in datasets)
         self.done = 0
         self.failed = []  # (dataset folder name, tile id, error)
 
+    def isCanceled(self):
+        return self.feedback.isCanceled()
+
     def cancelled(self):
-        return self.isCanceled()
+        return self.feedback.isCanceled()
 
     def work(self):
         for ds in self.datasets:
@@ -277,3 +295,23 @@ class DownloadTask(_Task):
     def warn(self, warning):
         if warning:
             self.log(f"  <span style='color:#b36b00'>Warning: {warning}</span>")
+
+
+class DownloadTask(_Task):
+    """Runs a Downloader in the background for the dialog."""
+
+    def __init__(self, datasets, out_dir, options, on_finished):
+        super().__init__("LiDAR Fetcher: downloading tiles", on_finished)
+        self.downloader = Downloader(datasets, out_dir, options, self.feedback, self.log,
+                                     self.setProgress)
+
+    @property
+    def outputs(self):
+        return self.downloader.outputs
+
+    @property
+    def failed(self):
+        return self.downloader.failed
+
+    def work(self):
+        self.downloader.work()

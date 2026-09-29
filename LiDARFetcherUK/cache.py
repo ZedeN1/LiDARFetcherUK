@@ -1,9 +1,10 @@
 """Persistent cache of dataset information that does not depend on the area.
 
 Each source stores what it fetched (last modified dates, collection lists) as
-{"fetched": ISO timestamp, "metadata": {...}} under its NAME. Entries never
-expire: every search refreshes them, and the cached copy is only used when a
-refresh fails. Lives in the QGIS profile folder so it survives plugin updates.
+{"fetched": ISO timestamp, "metadata": {...}} under its NAME. Searches use it
+as is; it is refetched by Refresh metadata, when a source has no entry, or once
+it is older than MAX_AGE_DAYS. If a fetch fails the old entry is kept. Lives in
+the QGIS profile folder so it survives plugin updates.
 """
 import json
 import os
@@ -13,6 +14,8 @@ from qgis.core import QgsApplication
 
 PATH = os.path.normpath(os.path.join(QgsApplication.qgisSettingsDirPath(), "LiDARFetcherUK",
                                      "catalogue_cache.json"))
+# Searches refetch a source's dataset info once its cache is older than this.
+MAX_AGE_DAYS = 30
 
 
 def load():
@@ -33,6 +36,10 @@ def save(data):
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def age_days(fetched):
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(fetched)).total_seconds() / 86400
 
 
 def describe(fetched):

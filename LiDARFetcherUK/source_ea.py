@@ -25,6 +25,28 @@ CKAN_SEARCH = ("https://ckan.publishing.service.gov.uk/api/action/package_search
 # is hidden unless the user asks for all survey products.
 LIDAR_PREFIXES = ("lidar_", "national_lidar_programme_", "surfzone_")
 
+# Every EA LiDAR product, for the Processing dataset list.
+PRODUCTS = {
+    "lidar_composite_dtm": "LIDAR Composite DTM",
+    "lidar_composite_first_return_dsm": "LIDAR Composite First Return DSM",
+    "lidar_composite_last_return_dsm": "LIDAR Composite Last Return DSM",
+    "national_lidar_programme_dtm": "National LIDAR Programme DTM",
+    "national_lidar_programme_dsm": "National LIDAR Programme DSM",
+    "national_lidar_programme_first_return_dsm": "National LIDAR Programme First Return DSM",
+    "national_lidar_programme_intensity": "National LIDAR Programme Intensity",
+    "national_lidar_programme_vom": "National LIDAR Programme VOM",
+    "national_lidar_programme_point_cloud": "National LIDAR Programme Point Cloud",
+    "lidar_tiles_dtm": "LIDAR Tiles DTM",
+    "lidar_tiles_dsm": "LIDAR Tiles DSM",
+    "lidar_point_cloud": "LIDAR Point Cloud",
+    "surfzone_dem_2019": "SurfZone DEM 2019",
+}
+
+
+def choices(metadata=None):
+    """[(choice key, label)] for the Processing dataset list."""
+    return [(f"{NAME}:{pid}", f"{NAME} - {label}") for pid, label in PRODUCTS.items()]
+
 # Catalogue record (data.gov.uk "guid") for each product, keyed (product id,
 # resolution id), with resolution None matching any. The date is last_any_modified
 # as seen by Gov_API/lidar_update_monitor.py on 2026-09-29, used when neither the

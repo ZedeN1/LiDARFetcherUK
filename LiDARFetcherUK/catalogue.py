@@ -42,6 +42,8 @@ class Dataset:
         self.last_modified = None
         # Welsh archive grids store heights in millimetres; converted on download.
         self.mm_units = False
+        # Matches the source's choices() entry, for the Processing dataset list.
+        self.choice_key = f"{source}:{product_id}"
 
     @property
     def key(self):
@@ -118,8 +120,12 @@ def request(url, data=None, feedback=None, content_type="application/geo+json", 
     if feedback is not None and feedback.isCanceled():
         raise RuntimeError(f"no answer within {timeout} s")
     if err != QgsBlockingNetworkRequest.ErrorCode.NoError:
-        body = bytes(blocking.reply().content()).decode("utf-8", "replace")[:300]
-        raise RuntimeError(f"{blocking.errorMessage()} {body}".strip())
+        reply = blocking.reply()
+        status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        if status:
+            reason = reply.attribute(QNetworkRequest.Attribute.HttpReasonPhraseAttribute) or ""
+            raise RuntimeError(f"HTTP {status} {reason}".strip())
+        raise RuntimeError(blocking.errorMessage())
     return bytes(blocking.reply().content())
 
 
@@ -127,39 +133,99 @@ def _warn(log, text):
     log(f"<span style='color:#b36b00'>{text}</span>")
 
 
+def _sources():
+    from . import source_ea, source_scotland, source_wales
+    return source_ea, source_scotland, source_wales
+
+
+def _refresh(source, store, feedback, log, why=None):
+    """Fetch one source's dataset info into store; returns its (possibly old) entry."""
+    from . import cache
+
+    old = store.get(source.NAME)
+    if why:
+        log(f"{source.NAME}: {why}, fetching dataset info")
+    try:
+        store[source.NAME] = {"fetched": cache.now(), "metadata": source.fetch_metadata(feedback)}
+    except Exception as e:
+        if feedback is not None and feedback.isCanceled():
+            raise
+        if old:
+            _warn(log, f"{source.NAME}: could not refresh dataset info ({e}); "
+                       f"using cache from {cache.describe(old['fetched'])}")
+        else:
+            _warn(log, f"{source.NAME}: could not fetch dataset info ({e})")
+    return store.get(source.NAME)
+
+
+def _save(store, log):
+    from . import cache
+
+    try:
+        cache.save(store)
+    except OSError as e:
+        _warn(log, f"Could not save the dataset info cache ({e})")
+
+
+def dataset_choices():
+    """[(choice key, label)] of every product from every source, for Processing.
+
+    Labels are stable text ("EA - LIDAR Composite DTM") so saved models and
+    scripts keep working; Scottish collections added since the plugin was
+    written come from the cache.
+    """
+    from . import cache
+
+    store = cache.load()
+    choices = []
+    for source in _sources():
+        entry = store.get(source.NAME) or {}
+        choices += source.choices(entry.get("metadata"))
+    return choices
+
+
+def refresh_metadata(feedback=None, log=print):
+    """Refetch every source's dataset info (names, dates) and save the cache."""
+    from . import cache
+
+    store = cache.load()
+    for source in _sources():
+        if feedback is not None and feedback.isCanceled():
+            return
+        _refresh(source, store, feedback, log)
+    _save(store, log)
+
+
 def search(area, feedback=None, log=print):
     """Datasets from every source covering the area, as {key: Dataset}.
 
-    Every source's dataset information (dates, collection lists) is refreshed
-    and saved to the cache, even for sources outside the area, so the cache
-    stays current. If a refresh fails the cached copy is used. The tile search
-    only runs for sources whose country overlaps the area. A source that fails
-    is reported through log and skipped, so one service being down does not
-    hide the others.
+    Dataset info (names, dates) comes from the cache; it is fetched only when
+    a source has none cached or the cache is older than cache.MAX_AGE_DAYS,
+    otherwise refresh_metadata does it on request. Tiles are always searched
+    live, but only for sources whose country overlaps the area. A source that
+    fails is reported through log and skipped, so one service being down does
+    not hide the others.
     """
-    from . import cache, source_ea, source_scotland, source_wales
+    from . import cache
 
     cancelled = lambda: feedback is not None and feedback.isCanceled()
     store = cache.load()
+    changed = False
     extent = area.bng.boundingBox()
     datasets = {}
-    for source in (source_ea, source_scotland, source_wales):
+    for source in _sources():
         if cancelled():
             break
         entry = store.get(source.NAME)
-        try:
-            entry = {"fetched": cache.now(), "metadata": source.fetch_metadata(feedback)}
-            store[source.NAME] = entry
-        except Exception as e:
-            if cancelled():
-                break
-            if entry:
-                _warn(log, f"{source.NAME}: could not refresh dataset info ({e}); "
-                           f"using cache from {cache.describe(entry['fetched'])}")
-            else:
-                _warn(log, f"{source.NAME}: could not fetch dataset info ({e})")
+        if not entry:
+            entry = _refresh(source, store, feedback, log, "no cached dataset info")
+            changed = True
+        elif cache.age_days(entry["fetched"]) > cache.MAX_AGE_DAYS:
+            entry = _refresh(source, store, feedback, log,
+                             f"cached dataset info older than {cache.MAX_AGE_DAYS} days")
+            changed = True
 
-        if not extent.intersects(source.COVERAGE):
+        if cancelled() or not extent.intersects(source.COVERAGE):
             continue
         try:
             found = source.search(area, entry["metadata"] if entry else None, feedback)
@@ -171,8 +237,6 @@ def search(area, feedback=None, log=print):
         for ds in found:
             datasets[ds.key] = ds
 
-    try:
-        cache.save(store)
-    except OSError as e:
-        _warn(log, f"Could not save the dataset info cache ({e})")
+    if changed:
+        _save(store, log)
     return datasets
