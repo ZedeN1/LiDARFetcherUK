@@ -2,22 +2,26 @@ import os
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-                                 QLabel, QPushButton, QRadioButton, QCheckBox, QComboBox,
+                                 QLabel, QPushButton, QRadioButton, QCheckBox,
                                  QTreeWidget, QTreeWidgetItem, QHeaderView, QProgressBar,
                                  QTextBrowser, QMessageBox)
 from qgis.core import (QgsApplication, QgsProject, QgsSettings, QgsGeometry, QgsRasterLayer,
-                       QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsMapLayerProxyModel)
+                       QgsMapLayerProxyModel)
 from qgis.gui import QgsMapLayerComboBox, QgsExtentWidget, QgsFileWidget
 
-from . import raster_tools
+from . import cache, raster_tools
+from .catalogue import Area
 from .tasks import SearchTask, DownloadTask
 
 SETTINGS = "LiDARFetcherUK/"
-WGS84 = QgsCoordinateReferenceSystem("EPSG:4326")
+# Options live in their own group so v0.01's saved choices do not override
+# the current defaults.
+OPTIONS = SETTINGS + "options/"
+DEFAULTS = {"vrt": True, "pyramids": True, "merge": False, "delete_zips": False, "add_to_map": True}
+# Convert to checkboxes: format key -> short label.
+CONVERT_FORMATS = {"GTiff": "GeoTIFF", "AAIGrid": "ASC", "FLT": "FLT"}
 
-# The search API rejects very detailed polygons, so simplify above this.
-MAX_VERTICES = 500
-# Ask before downloading more tiles than this (each is roughly 20 to 110 MB).
+# Ask before downloading more tiles than this (tiles run from a few MB to ~110 MB).
 WARN_TILES = 50
 
 try:
@@ -25,11 +29,6 @@ try:
     POLYGON_FILTER = Qgis.LayerFilter.PolygonLayer
 except AttributeError:
     POLYGON_FILTER = QgsMapLayerProxyModel.Filter.PolygonLayer
-
-
-def _to_coords(polygon):
-    """QgsGeometry.asPolygon() rings to GeoJSON Polygon coordinates."""
-    return [[[round(p.x(), 7), round(p.y(), 7)] for p in ring] for ring in polygon]
 
 
 class LidarFetcherDialog(QDialog):
@@ -78,13 +77,24 @@ class LidarFetcherDialog(QDialog):
         layout.addLayout(search_row)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Dataset", "Year", "Resolution", "Tiles", "Last modified"])
+        self.tree.setHeaderLabels(["Source", "Dataset", "Year", "Resolution", "Tiles", "Last modified"])
         self.tree.setRootIsDecorated(False)
         self.tree.setSortingEnabled(True)
-        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col in range(1, 5):
+        for col in range(6):
             self.tree.header().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tree.headerItem().setToolTip(
+            5, "Most recent change of any kind to the dataset or its metadata, "
+               "which can be later than the survey (e.g. reprocessing)")
         layout.addWidget(self.tree, 1)
+
+        self.cache_label = QLabel()
+        self.cache_label.setWordWrap(True)
+        self.cache_label.setStyleSheet("color: gray;")
+        self.cache_label.setToolTip("Dataset names and last modified dates are refreshed on every "
+                                    f"search and kept in\n{cache.PATH}\n"
+                                    "for when a service cannot be reached.")
+        layout.addWidget(self.cache_label)
 
         # --- Output ---
         out_row = QHBoxLayout()
@@ -99,21 +109,26 @@ class LidarFetcherDialog(QDialog):
         self.vrt_cb = QCheckBox("Create VRT")
         self.pyramids_cb = QCheckBox("Build pyramids (all levels)")
         self.merge_cb = QCheckBox("Merge into one file")
-        self.keep_zips_cb = QCheckBox("Keep downloaded zip files")
+        self.delete_zips_cb = QCheckBox("Delete downloaded zip files")
+        self.delete_zips_cb.setToolTip("Kept zips let a tile be re-extracted without downloading "
+                                       "it again if its files go missing")
         self.add_to_map_cb = QCheckBox("Add results to map")
-        self.format_combo = QComboBox()
-        for key, (label, _) in raster_tools.FORMATS.items():
-            self.format_combo.addItem(label, key)
         fmt_row = QHBoxLayout()
-        fmt_row.addWidget(QLabel("Convert to"))
-        fmt_row.addWidget(self.format_combo, 1)
+        fmt_row.addWidget(QLabel("Convert to:"))
+        self.format_cbs = {}
+        for key, label in CONVERT_FORMATS.items():
+            cb = QCheckBox(label)
+            cb.setToolTip(f"{raster_tools.FORMATS[key][0]}: one merged file when merging, "
+                          f"otherwise every tile converted into its own folder")
+            self.format_cbs[key] = cb
+            fmt_row.addWidget(cb)
+        fmt_row.addStretch()
         og.addWidget(self.vrt_cb, 0, 0)
         og.addWidget(self.pyramids_cb, 1, 0)
         og.addWidget(self.merge_cb, 2, 0)
-        og.addLayout(fmt_row, 3, 0)
-        og.addWidget(self.keep_zips_cb, 0, 1)
-        og.addWidget(self.add_to_map_cb, 1, 1)
-        self.format_combo.setToolTip("Applies to the merged file when merging, otherwise to every tile")
+        og.addLayout(fmt_row, 3, 0, 1, 2)
+        og.addWidget(self.add_to_map_cb, 0, 1)
+        og.addWidget(self.delete_zips_cb, 1, 1)
         layout.addWidget(opts)
 
         # --- Progress and log ---
@@ -140,27 +155,28 @@ class LidarFetcherDialog(QDialog):
         layout.addLayout(btns)
 
         self._load_settings()
+        self._update_cache_label()
 
     # ------------------------------------------------------------------ settings
     def _checkboxes(self):
         return {"vrt": self.vrt_cb, "pyramids": self.pyramids_cb, "merge": self.merge_cb,
-                "keep_zips": self.keep_zips_cb, "add_to_map": self.add_to_map_cb}
+                "delete_zips": self.delete_zips_cb, "add_to_map": self.add_to_map_cb}
 
     def _load_settings(self):
         s = QgsSettings()
         self.folder.setFilePath(s.value(SETTINGS + "folder", ""))
-        defaults = {"vrt": True, "add_to_map": True}
         for key, cb in self._checkboxes().items():
-            cb.setChecked(s.value(SETTINGS + key, defaults.get(key, False), type=bool))
-        idx = self.format_combo.findData(s.value(SETTINGS + "format", ""))
-        self.format_combo.setCurrentIndex(max(idx, 0))
+            cb.setChecked(s.value(OPTIONS + key, DEFAULTS[key], type=bool))
+        for key, cb in self.format_cbs.items():
+            cb.setChecked(s.value(OPTIONS + "convert_" + key, False, type=bool))
 
     def _save_settings(self):
         s = QgsSettings()
         s.setValue(SETTINGS + "folder", self.folder.filePath())
         for key, cb in self._checkboxes().items():
-            s.setValue(SETTINGS + key, cb.isChecked())
-        s.setValue(SETTINGS + "format", self.format_combo.currentData())
+            s.setValue(OPTIONS + key, cb.isChecked())
+        for key, cb in self.format_cbs.items():
+            s.setValue(OPTIONS + "convert_" + key, cb.isChecked())
 
     # ---------------------------------------------------------------------- area
     def _update_area_widgets(self):
@@ -175,8 +191,8 @@ class LidarFetcherDialog(QDialog):
             self.extent_widget.setCurrentExtent(canvas.extent(), crs)
             self.extent_widget.setOutputCrs(crs)
 
-    def _area_polygons(self):
-        """The area as a list of GeoJSON Polygon coordinates in WGS84."""
+    def _area(self):
+        """The area of interest as a catalogue.Area."""
         project = QgsProject.instance()
         if self.layer_radio.isChecked():
             layer = self.layer_combo.currentLayer()
@@ -196,49 +212,48 @@ class LidarFetcherDialog(QDialog):
             geom = QgsGeometry.fromRect(rect).densifyByCount(20)
             src_crs = self.extent_widget.outputCrs()
 
-        geom.transform(QgsCoordinateTransform(src_crs, WGS84, project))
-        polygons = []
-        for part in geom.asGeometryCollection():
-            tol = 1e-5
-            # Simplify detailed outlines, buffering by the same amount so no edge moves inwards.
-            while part.constGet().nCoordinates() > MAX_VERTICES:
-                part = part.simplify(tol).buffer(tol, 2)
-                tol *= 2
-            polygons.append(_to_coords(part.asPolygon()))
-        return polygons
+        return Area(geom, src_crs, project.transformContext())
 
     # -------------------------------------------------------------------- search
     def search(self):
         try:
-            polygons = self._area_polygons()
+            area = self._area()
         except Exception as e:
             QMessageBox.warning(self, "LiDAR Fetcher UK", str(e))
             return
         self.tree.clear()
-        self.log(f"Searching the Environment Agency catalogue ({len(polygons)} polygon(s))...")
-        self._start(SearchTask(polygons, self._search_finished))
+        self.log(f"Searching England, Scotland and Wales ({len(area.wgs84_parts)} polygon(s))...")
+        self._start(SearchTask(area, self._search_finished))
 
     def _search_finished(self, task, ok):
         self._task_done()
+        self._update_cache_label()
         if not ok:
             self._report_failure(task, "Search")
             return
         self.datasets = task.datasets
         self.tree.setSortingEnabled(False)
         for key, ds in self.datasets.items():
-            item = QTreeWidgetItem([ds.product_label, ds.year, ds.resolution_label,
+            item = QTreeWidgetItem([ds.source, ds.product_label, ds.year, ds.resolution_label,
                                     f"{len(ds.tiles):>5}", ds.last_modified or ""])
             item.setData(0, Qt.ItemDataRole.UserRole, key)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Unchecked)
             self.tree.addTopLevelItem(item)
         self.tree.setSortingEnabled(True)
-        self.tree.sortItems(0, Qt.SortOrder.AscendingOrder)
+        self.tree.sortItems(1, Qt.SortOrder.AscendingOrder)
         self._filter_rows()
         lidar = sum(ds.is_lidar for ds in self.datasets.values())
         self.log(f"Found {len(self.datasets)} dataset(s), {lidar} of them LiDAR.")
         if not self.datasets:
-            self.log("Nothing found. The Environment Agency catalogue covers England only.")
+            self.log("Nothing found. Coverage is England, Scotland and Wales only.")
+
+    def _update_cache_label(self):
+        store = cache.load()
+        parts = [f"{name} {cache.describe(store[name]['fetched'])}"
+                 for name in ("EA", "Scotland", "Wales") if store.get(name, {}).get("fetched")]
+        self.cache_label.setText("Dataset info fetched: " + " · ".join(parts) if parts
+                                 else "Dataset info not fetched yet.")
 
     def _filter_rows(self):
         show_all = self.show_all.isChecked()
@@ -269,13 +284,13 @@ class LidarFetcherDialog(QDialog):
         if tiles > WARN_TILES:
             reply = QMessageBox.question(
                 self, "LiDAR Fetcher UK",
-                f"This will download {tiles} tiles (roughly 20 to 110 MB each). Continue?")
+                f"This will download {tiles} tiles (a few MB to ~110 MB each). Continue?")
             if reply != QMessageBox.StandardButton.Yes:
                 return
         os.makedirs(out_dir, exist_ok=True)
         self._save_settings()
         options = {key: cb.isChecked() for key, cb in self._checkboxes().items()}
-        options["format"] = self.format_combo.currentData()
+        options["formats"] = [key for key, cb in self.format_cbs.items() if cb.isChecked()]
         self.log(f"Downloading {tiles} tile(s) to {out_dir}")
         self._start(DownloadTask(chosen, out_dir, options, self._download_finished))
 
@@ -285,7 +300,10 @@ class LidarFetcherDialog(QDialog):
             self._report_failure(task, "Download")
             return
         self.progress.setValue(100)
-        self.log("<b>Done.</b>")
+        if task.failed:
+            self.log(f"<b>Done, with {len(task.failed)} failed tile(s).</b>")
+        else:
+            self.log("<b>Done.</b>")
         if self.add_to_map_cb.isChecked():
             self._add_to_map(task.outputs)
 
