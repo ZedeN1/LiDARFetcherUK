@@ -1,0 +1,27 @@
+[general]
+name=LiDAR Fetcher UK
+qgisMinimumVersion=3.22
+qgisMaximumVersion=4.99
+description=Download Environment Agency LiDAR tiles for a polygon or extent, with optional VRT, pyramids, merge and format conversion.
+version=0.01
+author=Pavel Diptan
+email=pdiptan@gmail.com
+about=Pick an area (polygon layer or extent), choose one or more datasets from the Environment Agency survey catalogue (LiDAR composites, time-stamped tiles, National LiDAR Programme, point clouds) and download the tiles into a folder.
+
+    Options:
+    - Build a VRT mosaic
+    - Build pyramids (all levels)
+    - Merge the tiles into a single raster
+    - Convert to GeoTIFF, ASCII Grid (.asc) or ESRI Float (.flt)
+
+    Also adds a Processing Toolbox algorithm (LiDAR Fetcher UK > Convert raster to FLT / ASC / GeoTIFF) that converts any raster, with batch support.
+
+    Coverage is England only (Environment Agency data).
+tracker=https://github.com/ZedeN1/LiDARFetcherUK/issues
+repository=https://github.com/ZedeN1/LiDARFetcherUK
+homepage=https://github.com/ZedeN1/LiDARFetcherUK
+category=Raster
+icon=icon.png
+tags=lidar,dtm,dsm,download,environment agency,england,elevation,vrt,flt,asc
+experimental=True
+hasProcessingProvider=yes
