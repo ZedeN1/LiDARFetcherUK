@@ -16,7 +16,7 @@ Works with QGIS 3.22+ and QGIS 4.
 
 ## Usage
 
-1. **Raster → LiDAR Fetcher UK** (or the toolbar icon).
+1. **Web → LiDAR Fetcher UK** (or the toolbar icon).
 2. Pick the area: a polygon layer (optionally selected features only) or an extent (canvas, layer or drawn).
 3. **Find available datasets** searches all three sources and lists every product, year and resolution covering the area, newest first, with its source, tile count and last modified date. Tick the datasets you want, or use the tick box in the top-left of the table to tick all of them (tick *Show non-LiDAR products* for EA CASI and aerial photography). Columns can be resized by dragging.
 4. Choose an output folder and options, then **Download**.
