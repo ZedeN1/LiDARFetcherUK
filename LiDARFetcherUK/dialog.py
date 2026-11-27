@@ -9,19 +9,19 @@ from qgis.core import (QgsApplication, QgsProject, QgsSettings, QgsGeometry, Qgs
                        QgsMapLayerProxyModel)
 from qgis.gui import QgsMapLayerComboBox, QgsExtentWidget, QgsFileWidget
 
-from . import cache, raster_tools
+from . import catalogue, raster_tools
 from .catalogue import Area
-from .tasks import SearchTask, RefreshTask, DownloadTask
+from .tasks import SearchTask, DownloadTask
 
 SETTINGS = "LiDARFetcherUK/"
 # Options live in their own group so v0.01's saved choices do not override
 # the current defaults.
 OPTIONS = SETTINGS + "options/"
-DEFAULTS = {"vrt": True, "pyramids": True, "merge": False, "delete_zips": False, "add_to_map": True}
+DEFAULTS = {"vrt": True, "pyramids": True, "merge": False, "add_to_map": True}
 # Convert to checkboxes: format key -> short label.
 CONVERT_FORMATS = {"GTiff": "GeoTIFF", "AAIGrid": "ASC", "FLT": "FLT"}
 
-# Ask before downloading more tiles than this (tiles run from a few MB to ~110 MB).
+# Ask before downloading more tiles than this (tiles run from about 1 MB to ~110 MB).
 WARN_TILES = 50
 
 try:
@@ -31,8 +31,8 @@ except AttributeError:
     POLYGON_FILTER = QgsMapLayerProxyModel.Filter.PolygonLayer
 
 # Results table columns; the first holds only the tick box.
-COLUMNS = ["", "Source", "Dataset", "Year", "Resolution", "Tiles", "Last modified"]
-COL_CHECK, COL_YEAR, COL_MODIFIED = 0, 3, 6
+COLUMNS = ["", "Source", "Dataset", "Resolution", "Tiles", "Cached", "Last modified"]
+COL_CHECK, COL_SOURCE, COL_CACHED, COL_MODIFIED = 0, 1, 5, 6
 
 _CHECK_STYLE = {Qt.CheckState.Checked: QStyle.StateFlag.State_On,
                 Qt.CheckState.Unchecked: QStyle.StateFlag.State_Off,
@@ -91,10 +91,8 @@ class LidarFetcherDialog(QDialog):
         self.iface = iface
         self.task = None
         self.datasets = {}
-        self.last_area = None
-        self.restore_checked = set()
         self.setWindowTitle("LiDAR Fetcher UK")
-        self.resize(760, 860)
+        self.resize(760, 820)
 
         layout = QVBoxLayout(self)
 
@@ -125,18 +123,8 @@ class LidarFetcherDialog(QDialog):
         search_row = QHBoxLayout()
         self.search_btn = QPushButton("Find available datasets")
         self.search_btn.clicked.connect(self.search)
-        self.refresh_btn = QPushButton("Refresh metadata")
-        self.refresh_btn.setToolTip(
-            "Refetch dataset names and last modified dates from all three sources.\n"
-            f"Searches use the cached copy, refetched automatically once older than "
-            f"{cache.MAX_AGE_DAYS} days.")
-        self.refresh_btn.clicked.connect(self.refresh)
-        self.show_all = QCheckBox("Show non-LiDAR products")
-        self.show_all.toggled.connect(self._filter_rows)
         search_row.addWidget(self.search_btn)
-        search_row.addWidget(self.refresh_btn)
         search_row.addStretch()
-        search_row.addWidget(self.show_all)
         layout.addLayout(search_row)
 
         self.tree = QTreeWidget()
@@ -155,19 +143,24 @@ class LidarFetcherDialog(QDialog):
         self.tree.itemChanged.connect(self._update_check_header)
         self.tree.headerItem().setToolTip(COL_CHECK, "Tick or untick all listed datasets")
         self.tree.headerItem().setToolTip(
-            COL_MODIFIED, "Most recent change of any kind to the dataset or its metadata, "
-                          "which can be later than the survey (e.g. reprocessing)")
+            COL_CACHED, "Tiles already on mapcache. The others are fetched from the publisher "
+                        "by mapcache first, which takes longer")
+        self.tree.headerItem().setToolTip(
+            COL_MODIFIED, "The dataset record's last modified date. Tiles downloaded before it "
+                          "are fetched again on the next run")
         self.tree.setMinimumHeight(220)
         layout.addWidget(self.tree, 1)
 
-        self.cache_label = QLabel()
-        self.cache_label.setWordWrap(True)
-        self.cache_label.setStyleSheet("color: gray;")
-        self.cache_label.setToolTip(
-            f"Dataset names and last modified dates are cached in\n{cache.PATH}\n"
-            f"Refresh metadata refetches them; searches do so automatically once the cache "
-            f"is older than {cache.MAX_AGE_DAYS} days.")
-        layout.addWidget(self.cache_label)
+        self.source_label = QLabel(
+            f"Data comes from the EVY LiDAR cache (mapcache, EVY network only): {catalogue.base_url()}")
+        self.source_label.setWordWrap(True)
+        self.source_label.setStyleSheet("color: gray;")
+        self.source_label.setToolTip(
+            "Only the DTMs mapcache caches are offered: EA LIDAR Composite DTM 2022 (1 m, 2 m), "
+            "Welsh Government LiDAR DTM 2020-2023, Scotland Phase 1-6 and the Scottish National "
+            "LiDAR Programme DTM.\nFor anything else, or straight from the publisher, use "
+            "another plugin (e.g. LIDAR Downloader UK).")
+        layout.addWidget(self.source_label)
 
         # --- Output ---
         out_row = QHBoxLayout()
@@ -181,10 +174,9 @@ class LidarFetcherDialog(QDialog):
         og = QGridLayout(opts)
         self.vrt_cb = QCheckBox("Create VRT")
         self.pyramids_cb = QCheckBox("Build pyramids (all levels)")
+        self.pyramids_cb.setToolTip("Tiles come with mapcache's ready-made overviews (.ovr); "
+                                    "VRT and merged files get their own")
         self.merge_cb = QCheckBox("Merge into one file")
-        self.delete_zips_cb = QCheckBox("Delete downloaded zip files")
-        self.delete_zips_cb.setToolTip("Kept zips let a tile be re-extracted without downloading "
-                                       "it again if its files go missing")
         self.add_to_map_cb = QCheckBox("Add results to map")
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(QLabel("Convert to:"))
@@ -201,7 +193,6 @@ class LidarFetcherDialog(QDialog):
         og.addWidget(self.merge_cb, 2, 0)
         og.addLayout(fmt_row, 3, 0, 1, 2)
         og.addWidget(self.add_to_map_cb, 0, 1)
-        og.addWidget(self.delete_zips_cb, 1, 1)
         layout.addWidget(opts)
 
         # --- Progress and log ---
@@ -228,12 +219,11 @@ class LidarFetcherDialog(QDialog):
         layout.addLayout(btns)
 
         self._load_settings()
-        self._update_cache_label()
 
     # ------------------------------------------------------------------ settings
     def _checkboxes(self):
         return {"vrt": self.vrt_cb, "pyramids": self.pyramids_cb, "merge": self.merge_cb,
-                "delete_zips": self.delete_zips_cb, "add_to_map": self.add_to_map_cb}
+                "add_to_map": self.add_to_map_cb}
 
     def _load_settings(self):
         s = QgsSettings()
@@ -294,90 +284,49 @@ class LidarFetcherDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "LiDAR Fetcher UK", str(e))
             return
-        self._run_search(area)
-
-    def _run_search(self, area):
-        self.last_area = area
         self.tree.clear()
-        self.log(f"Searching England, Scotland and Wales ({len(area.wgs84_parts)} polygon(s))...")
+        self.datasets = {}
+        self.log("Asking mapcache for the cached datasets covering the area...")
         self._start(SearchTask(area, self._search_finished))
 
     def _search_finished(self, task, ok):
         self._task_done()
-        self._update_cache_label()
-        restore, self.restore_checked = self.restore_checked, set()
         if not ok:
             self._report_failure(task, "Search")
             return
         self.datasets = task.datasets
         self.tree.setSortingEnabled(False)
         self.tree.blockSignals(True)
-        # Added in name order so that, as sorting is stable, each year lists its datasets by name.
-        for key, ds in sorted(self.datasets.items(),
-                              key=lambda kv: (kv[1].product_label, kv[1].resolution_label)):
-            item = QTreeWidgetItem(["", ds.source, ds.product_label, ds.year, ds.resolution_label,
-                                    f"{len(ds.tiles):>5}", ds.last_modified or ""])
+        for key, ds in self.datasets.items():
+            item = QTreeWidgetItem(["", ds.source, ds.title, ds.resolution_label,
+                                    f"{len(ds.tiles):>5}", f"{ds.cached:>5}", ds.last_modified or ""])
             item.setData(COL_CHECK, Qt.ItemDataRole.UserRole, key)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(COL_CHECK, Qt.CheckState.Checked if key in restore
-                               else Qt.CheckState.Unchecked)
+            item.setCheckState(COL_CHECK, Qt.CheckState.Unchecked)
             self.tree.addTopLevelItem(item)
         self.tree.blockSignals(False)
         self.tree.setSortingEnabled(True)
-        self.tree.sortItems(COL_YEAR, Qt.SortOrder.DescendingOrder)
+        self.tree.sortItems(COL_SOURCE, Qt.SortOrder.AscendingOrder)
         for col in range(1, self.tree.columnCount()):
             self.tree.resizeColumnToContents(col)
-        self._filter_rows()
-        lidar = sum(ds.is_lidar for ds in self.datasets.values())
-        self.log(f"Found {len(self.datasets)} dataset(s), {lidar} of them LiDAR.")
-        if not self.datasets:
-            self.log("Nothing found. Coverage is England, Scotland and Wales only.")
-
-    def _update_cache_label(self):
-        store = cache.load()
-        parts = [f"{name} {cache.describe(store[name]['fetched'])}"
-                 for name in ("EA", "Scotland", "Wales") if store.get(name, {}).get("fetched")]
-        self.cache_label.setText("Dataset info fetched: " + " · ".join(parts) if parts
-                                 else "Dataset info not fetched yet.")
-
-    def refresh(self):
-        self.log("Refreshing dataset info...")
-        self._start(RefreshTask(self._refresh_finished))
-
-    def _refresh_finished(self, task, ok):
-        self._task_done()
-        self._update_cache_label()
-        if not ok:
-            self._report_failure(task, "Refresh")
-            return
-        self.log("Dataset info refreshed.")
-        if self.last_area is not None and self.datasets:
-            # Search again so the table shows the new dates, keeping the ticks.
-            self.restore_checked = {ds.key for ds in self._checked_datasets()}
-            self._run_search(self.last_area)
-
-    def _visible_items(self):
-        items = (self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount()))
-        return [item for item in items if not item.isHidden()]
-
-    def _filter_rows(self):
-        show_all = self.show_all.isChecked()
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            ds = self.datasets[item.data(COL_CHECK, Qt.ItemDataRole.UserRole)]
-            item.setHidden(not (show_all or ds.is_lidar))
         self._update_check_header()
+        self.log(f"Found {len(self.datasets)} dataset(s).")
+        if not self.datasets:
+            self.log("Nothing found. Mapcache covers England, Scotland and Wales only.")
+
+    def _items(self):
+        return [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
 
     def _set_all_checked(self, checked):
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         self.tree.blockSignals(True)
-        for item in self._visible_items():
+        for item in self._items():
             item.setCheckState(COL_CHECK, state)
         self.tree.blockSignals(False)
         self._update_check_header()
 
     def _update_check_header(self, *args):
-        items = self._visible_items()
+        items = self._items()
         ticked = sum(item.checkState(COL_CHECK) == Qt.CheckState.Checked for item in items)
         if items and ticked == len(items):
             state = Qt.CheckState.Checked
@@ -390,7 +339,7 @@ class LidarFetcherDialog(QDialog):
     # ------------------------------------------------------------------ download
     def _checked_datasets(self):
         return [self.datasets[item.data(COL_CHECK, Qt.ItemDataRole.UserRole)]
-                for item in self._visible_items()
+                for item in self._items()
                 if item.checkState(COL_CHECK) == Qt.CheckState.Checked]
 
     def download(self):
@@ -406,7 +355,7 @@ class LidarFetcherDialog(QDialog):
         if tiles > WARN_TILES:
             reply = QMessageBox.question(
                 self, "LiDAR Fetcher UK",
-                f"This will download {tiles} tiles (a few MB to ~110 MB each). Continue?")
+                f"This will download {tiles} tiles (about 1 MB to ~110 MB each). Continue?")
             if reply != QMessageBox.StandardButton.Yes:
                 return
         os.makedirs(out_dir, exist_ok=True)
@@ -461,7 +410,7 @@ class LidarFetcherDialog(QDialog):
         self._set_busy(False)
 
     def _set_busy(self, busy):
-        for button in (self.search_btn, self.refresh_btn, self.download_btn):
+        for button in (self.search_btn, self.download_btn):
             button.setEnabled(not busy)
         self.cancel_btn.setEnabled(busy)
 

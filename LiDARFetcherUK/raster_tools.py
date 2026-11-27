@@ -6,7 +6,7 @@ tools are not always on PATH in a QGIS install.
 import math
 import os
 
-from osgeo import gdal, osr
+from osgeo import gdal
 
 gdal.UseExceptions()
 
@@ -92,41 +92,13 @@ def convert(src, dst, fmt, cancelled=None):
     return None
 
 
-def mm_to_metres(src, dst):
-    """Rewrite a millimetre height grid as a Float32 GeoTIFF in metres (EPSG:27700).
-
-    For the NRW LiDAR archive, whose ASCII grids hold heights in millimetres
-    and come without a .prj.
-    """
-    ds = gdal.Open(src)
-    band = ds.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-    data = band.ReadAsArray().astype("float32")
-    if nodata is not None:
-        mask = data == nodata
-        data /= 1000.0
-        data[mask] = nodata
-    else:
-        data /= 1000.0
-
-    driver = gdal.GetDriverByName("GTiff")
-    out = driver.Create(dst, ds.RasterXSize, ds.RasterYSize, 1, gdal.GDT_Float32,
-                        ["COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES"])
-    out.SetGeoTransform(ds.GetGeoTransform())
-    out.SetProjection(ds.GetProjection() or _bng_wkt())
-    out_band = out.GetRasterBand(1)
-    if nodata is not None:
-        out_band.SetNoDataValue(nodata)
-    out_band.WriteArray(data)
-    out_band = None
-    out = None
-    ds = None
-
-
-def _bng_wkt():
-    srs = osr.SpatialReference()
-    srs.ImportFromEPSG(27700)
-    return srs.ExportToWkt()
+def has_overviews(path):
+    """True if the raster already has overviews (internal, as in a COG, or an external .ovr)."""
+    ds = gdal.Open(path)
+    try:
+        return ds.GetRasterBand(1).GetOverviewCount() > 0
+    finally:
+        ds = None
 
 
 def _fmt(value):
