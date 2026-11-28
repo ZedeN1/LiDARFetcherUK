@@ -22,7 +22,7 @@ from qgis.PyQt.QtNetwork import QNetworkRequest
 BNG = QgsCoordinateReferenceSystem("EPSG:27700")
 
 DEFAULT_URL = "https://mapcache.niagara.ad.edenvaleyoung.com/lidar"
-URL_SETTING = "LiDARFetcherUK/mapcache_url"
+URL_SETTING = "EVYLidarDownloader/mapcache_url"
 
 # Mapcache answers at most 50,000 km2 per request: ask in squares of this size (metres).
 CHUNK = 100000
@@ -45,7 +45,7 @@ SOURCES = {"ea": "EA", "wales": "Wales", "scot": "Scotland"}
 
 
 def base_url():
-    """Mapcache's /lidar address (setting LiDARFetcherUK/mapcache_url, else the EVY default)."""
+    """Mapcache's /lidar address (setting EVYLidarDownloader/mapcache_url, else the EVY default)."""
     return (QgsSettings().value(URL_SETTING, "") or DEFAULT_URL).rstrip("/")
 
 

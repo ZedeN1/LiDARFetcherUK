@@ -1,4 +1,4 @@
-"""Per-dataset download record, kept as lidar_fetcher.json in the dataset folder.
+"""Per-dataset download record, kept as evy_lidar.json in the dataset folder.
 
 It records every tile (mapcache path, status, attempts, when, files produced,
 errors) and the processing that was run, and decides which tiles a new run
@@ -14,7 +14,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-FILE_NAME = "lidar_fetcher.json"
+FILE_NAME = "evy_lidar.json"
 
 
 def now():

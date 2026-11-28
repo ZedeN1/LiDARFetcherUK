@@ -26,16 +26,16 @@ ICON = os.path.join(os.path.dirname(__file__), 'icon.png')
 CONVERT_FORMATS = ["FLT", "AAIGrid", "GTiff"]
 
 
-class LidarFetcherProvider(QgsProcessingProvider):
+class EvyLidarDownloaderProvider(QgsProcessingProvider):
     def loadAlgorithms(self):
         self.addAlgorithm(DownloadLidarAlgorithm())
         self.addAlgorithm(ConvertRasterAlgorithm())
 
     def id(self):
-        return 'lidarfetcheruk'
+        return 'evylidardownloader'
 
     def name(self):
-        return 'LiDAR Fetcher UK'
+        return 'EVY LIDAR Downloader'
 
     def icon(self):
         return QIcon(ICON)
@@ -136,13 +136,13 @@ class DownloadLidarAlgorithm(QgsProcessingAlgorithm):
 
     def shortHelpString(self):
         return ("Downloads LiDAR DTM tiles from the EVY LiDAR cache (mapcache, EVY network only) "
-                "covering a polygon layer or an extent, with the same options as the LiDAR "
-                "Fetcher UK dialog.\n\n"
+                "covering a polygon layer or an extent, with the same options as the EVY LIDAR "
+                "Downloader dialog.\n\n"
                 "Datasets: the DTMs mapcache caches (EA LIDAR Composite DTM 2022 1 m and 2 m, "
                 "Welsh Government LiDAR DTM 2020-2023, Scotland Phase 1-6 and the Scottish "
                 "National LiDAR Programme).\n\n"
                 "Each dataset goes into its own folder in the output folder, with "
-                "lidar_fetcher.json recording every tile, so running again into the same folder "
+                "evy_lidar.json recording every tile, so running again into the same folder "
                 "only fetches what is missing, failed or updated.\n\n"
                 "Convert to: one merged file per format when merging, otherwise every tile is "
                 "converted into a folder per format.")

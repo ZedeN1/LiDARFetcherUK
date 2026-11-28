@@ -3,10 +3,7 @@ from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsApplication
 
-MENU = '&LiDAR Fetcher UK'
-
-
-class LidarFetcherPlugin:
+class EvyLidarDownloaderPlugin:
     def __init__(self, iface):
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
@@ -17,17 +14,17 @@ class LidarFetcherPlugin:
     def initProcessing(self):
         if self.provider is not None:
             return
-        from .provider import LidarFetcherProvider
-        self.provider = LidarFetcherProvider()
+        from .provider import EvyLidarDownloaderProvider
+        self.provider = EvyLidarDownloaderProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
 
     def initGui(self):
         self.initProcessing()
         icon_path = os.path.join(self.plugin_dir, 'icon.png')
-        self.action = QAction(QIcon(icon_path), 'LiDAR Fetcher UK', self.iface.mainWindow())
+        self.action = QAction(QIcon(icon_path), 'EVY LIDAR Downloader', self.iface.mainWindow())
         self.action.triggered.connect(self.run)
         self.iface.addToolBarIcon(self.action)
-        self.iface.addPluginToWebMenu(MENU, self.action)
+        self.iface.webMenu().addAction(self.action)
 
     def unload(self):
         if self.provider is not None:
@@ -39,12 +36,12 @@ class LidarFetcherPlugin:
             self.dialog.deleteLater()
             self.dialog = None
         self.iface.removeToolBarIcon(self.action)
-        self.iface.removePluginWebMenu(MENU, self.action)
+        self.iface.webMenu().removeAction(self.action)
 
     def run(self):
         if self.dialog is None:
-            from .dialog import LidarFetcherDialog
-            self.dialog = LidarFetcherDialog(self.iface, self.iface.mainWindow())
+            from .dialog import EvyLidarDownloaderDialog
+            self.dialog = EvyLidarDownloaderDialog(self.iface, self.iface.mainWindow())
         self.dialog.show()
         self.dialog.raise_()
         self.dialog.activateWindow()

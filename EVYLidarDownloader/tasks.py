@@ -53,7 +53,7 @@ class _Task(QgsTask):
 
 class SearchTask(_Task):
     def __init__(self, area, on_finished):
-        super().__init__("LiDAR Fetcher: searching mapcache", on_finished)
+        super().__init__("EVY LIDAR Downloader: searching mapcache", on_finished)
         self.area = area
         self.datasets = {}
 
@@ -69,7 +69,7 @@ class Downloader:
     """Download each dataset into its own folder through mapcache, then run the chosen processing.
 
     Layout: <out>/<dataset name>/tiles/ holds the tiles' files, and the VRT,
-    merged raster and converted tiles sit alongside it, with lidar_fetcher.json
+    merged raster and converted tiles sit alongside it, with evy_lidar.json
     recording every tile and the processing (see manifest).
 
     Plain class shared by the dialog's DownloadTask and the Processing
@@ -294,7 +294,7 @@ class DownloadTask(_Task):
     """Runs a Downloader in the background for the dialog."""
 
     def __init__(self, datasets, out_dir, options, on_finished):
-        super().__init__("LiDAR Fetcher: downloading tiles", on_finished)
+        super().__init__("EVY LIDAR Downloader: downloading tiles", on_finished)
         self.downloader = Downloader(datasets, out_dir, options, self.feedback, self.log,
                                      self.setProgress)
 

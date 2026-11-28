@@ -1,9 +1,9 @@
 [general]
-name=LiDAR Fetcher UK
+name=EVY LIDAR Downloader
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 description=Download LiDAR DTM tiles for England, Scotland and Wales from the EVY LiDAR cache (EVY network only), with optional VRT, pyramids, merge and format conversion.
-version=0.05
+version=0.06
 author=Pavel Diptan
 email=pdiptan@gmail.com
 about=For use inside EVY: downloads through the EVY LiDAR cache (mapcache), so a tile fetched once is local for everyone. Pick an area (polygon layer or extent), choose one or more of the cached DTMs and download the tiles into a folder:
@@ -19,10 +19,10 @@ about=For use inside EVY: downloads through the EVY LiDAR cache (mapcache), so a
     - Merge the tiles into a single raster
     - Convert to GeoTIFF, ASCII Grid (.asc) or ESRI Float (.flt)
 
-    Also adds Processing Toolbox algorithms (LiDAR Fetcher UK): Download LiDAR tiles, for batch runs and models, and Convert raster to FLT / ASC / GeoTIFF for any raster.
-tracker=https://github.com/ZedeN1/LiDARFetcherUK/issues
-repository=https://github.com/ZedeN1/LiDARFetcherUK
-homepage=https://github.com/ZedeN1/LiDARFetcherUK
+    Also adds Processing Toolbox algorithms (EVY LIDAR Downloader): Download LiDAR tiles, for batch runs and models, and Convert raster to FLT / ASC / GeoTIFF for any raster.
+tracker=https://github.com/ZedeN1/EVYLidarDownloader/issues
+repository=https://github.com/ZedeN1/EVYLidarDownloader
+homepage=https://github.com/ZedeN1/EVYLidarDownloader
 category=Web
 icon=icon.png
 tags=lidar,dtm,download,environment agency,england,scotland,wales,elevation,vrt,flt,asc,evy

@@ -13,7 +13,7 @@ from . import catalogue, raster_tools
 from .catalogue import Area
 from .tasks import SearchTask, DownloadTask
 
-SETTINGS = "LiDARFetcherUK/"
+SETTINGS = "EVYLidarDownloader/"
 # Options live in their own group so v0.01's saved choices do not override
 # the current defaults.
 OPTIONS = SETTINGS + "options/"
@@ -85,13 +85,13 @@ class _CheckHeader(QHeaderView):
             super().mouseReleaseEvent(event)
 
 
-class LidarFetcherDialog(QDialog):
+class EvyLidarDownloaderDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
         self.task = None
         self.datasets = {}
-        self.setWindowTitle("LiDAR Fetcher UK")
+        self.setWindowTitle("EVY LIDAR Downloader")
         self.resize(760, 820)
 
         layout = QVBoxLayout(self)
@@ -282,7 +282,7 @@ class LidarFetcherDialog(QDialog):
         try:
             area = self._area()
         except Exception as e:
-            QMessageBox.warning(self, "LiDAR Fetcher UK", str(e))
+            QMessageBox.warning(self, "EVY LIDAR Downloader", str(e))
             return
         self.tree.clear()
         self.datasets = {}
@@ -346,15 +346,15 @@ class LidarFetcherDialog(QDialog):
         chosen = self._checked_datasets()
         out_dir = self.folder.filePath()
         if not chosen:
-            QMessageBox.warning(self, "LiDAR Fetcher UK", "Tick at least one dataset.")
+            QMessageBox.warning(self, "EVY LIDAR Downloader", "Tick at least one dataset.")
             return
         if not out_dir:
-            QMessageBox.warning(self, "LiDAR Fetcher UK", "Choose an output folder.")
+            QMessageBox.warning(self, "EVY LIDAR Downloader", "Choose an output folder.")
             return
         tiles = sum(len(d.tiles) for d in chosen)
         if tiles > WARN_TILES:
             reply = QMessageBox.question(
-                self, "LiDAR Fetcher UK",
+                self, "EVY LIDAR Downloader",
                 f"This will download {tiles} tiles (about 1 MB to ~110 MB each). Continue?")
             if reply != QMessageBox.StandardButton.Yes:
                 return
@@ -418,7 +418,7 @@ class LidarFetcherDialog(QDialog):
         if task.error:
             self.log(f"<span style='color:#c00'>{what} failed: "
                      f"{task.error.splitlines()[0]}</span>")
-            QgsApplication.messageLog().logMessage(task.error, "LiDAR Fetcher UK")
+            QgsApplication.messageLog().logMessage(task.error, "EVY LIDAR Downloader")
         else:
             self.log(f"{what} cancelled.")
 

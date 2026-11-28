@@ -35,13 +35,13 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           TAG=${{ github.ref_name }}
-          DOWNLOAD_URL="https://github.com/ZedeN1/LiDARFetcherUK/releases/download/${TAG}/LiDARFetcherUK.${VERSION}.zip"
+          DOWNLOAD_URL="https://github.com/ZedeN1/EVYLidarDownloader/releases/download/${TAG}/EVYLidarDownloader.${VERSION}.zip"
 
           git clone https://x-access-token:${PLUGINS_REPO_TOKEN}@github.com/ZedeN1/qgis-plugins.git _repo
           cd _repo
-          python3 update_plugin.py plugins.xml "LiDAR Fetcher UK" "${VERSION}" "${DOWNLOAD_URL}"
+          python3 update_plugin.py plugins.xml "EVY LIDAR Downloader" "${VERSION}" "${DOWNLOAD_URL}"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add plugins.xml
-          git diff --staged --quiet || git commit -m "chore: update LiDAR Fetcher UK to ${TAG}"
+          git diff --staged --quiet || git commit -m "chore: update EVY LIDAR Downloader to ${TAG}"
           git push
